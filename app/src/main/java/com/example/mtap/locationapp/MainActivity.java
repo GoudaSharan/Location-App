@@ -194,10 +194,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         String lat = String.valueOf(location.getLatitude());
         String lng = String.valueOf(location.getLongitude());
         DatabaseHelper db = new DatabaseHelper(MainActivity.this);
-        long check = db.insertLocation(lat, lng);
+      /* // long check = db.insertLocation(lat, lng);
         if(check>=1.0){
             Toast.makeText(this, "Location inserted successfully ", Toast.LENGTH_LONG).show();
-        }
+        }*/
     }
 
     @Override

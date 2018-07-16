@@ -3,24 +3,35 @@ package com.example.mtap.locationapp.views.activities;
 import android.content.DialogInterface;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.LoaderManager;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.CursorLoader;
+import android.support.v4.content.Loader;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.DefaultItemAnimator;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
 import android.view.View;
 import android.widget.Toast;
 
 import com.example.mtap.locationapp.MainActivity;
 import com.example.mtap.locationapp.R;
+import com.example.mtap.locationapp.adapter.LocationAdapter;
 import com.example.mtap.locationapp.database.DatabaseHelper;
+import com.example.mtap.locationapp.interfaces.IRefreshLocationListListener;
+import com.example.mtap.locationapp.provider.LocationsProvider;
 import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
@@ -35,19 +46,26 @@ import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 
-public class LocationActivity extends AppCompatActivity {
+import java.util.ArrayList;
+import java.util.List;
 
+public class LocationActivity extends AppCompatActivity implements
+        IRefreshLocationListListener,android.support.v4.app.LoaderManager.LoaderCallbacks<Cursor> {
     private FusedLocationProviderClient mFusedLocationClient;
-
-
     private LocationRequest mLocationRequest;
-
     private long UPDATE_INTERVAL = 10 * 1000;  /* 10 secs */
     private long FASTEST_INTERVAL = 2000; /* 2 sec */
-    private static int REQUEST_CHECK_SETTINGS=1;
+    private static int REQUEST_CHECK_SETTINGS = 1;
     private LocationCallback mLocationCallback;
     private boolean mRequestingLocationUpdates;
     public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+    //Recyclerview items...
+    private List<com.example.mtap.locationapp.model.Location> locationList = new ArrayList<>();
+    private RecyclerView recyclerView;
+    private LocationAdapter mAdapter;
+
+    private int LOADER_ID = 1;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -62,16 +80,35 @@ public class LocationActivity extends AppCompatActivity {
                     android.Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED) {
                 checkLocationPermission();
-            }else {
+            } else {
                 initializeLocation();
             }
-        }else {
+        } else {
             initializeLocation();
         }
 
 
-DatabaseHelper db=new DatabaseHelper(this);
-        db.getAllLocations();
+        DatabaseHelper db = new DatabaseHelper(this);
+        locationList = db.getAllLocations();
+
+
+       setAdapter();
+    //    getSupportLoaderManager().initLoader(LOADER_ID, null, this);
+
+    }
+
+    private void setAdapter() {
+        recyclerView = (RecyclerView) findViewById(R.id.recycler_view);
+
+        if (locationList != null ) {
+            mAdapter = new LocationAdapter(locationList,null);
+
+            RecyclerView.LayoutManager mLayoutManager = new LinearLayoutManager
+                    (getApplicationContext());
+            recyclerView.setLayoutManager(mLayoutManager);
+            recyclerView.setItemAnimator(new DefaultItemAnimator());
+            recyclerView.setAdapter(mAdapter);
+        }
     }
 
     private void initializeLocation() {
@@ -114,7 +151,7 @@ DatabaseHelper db=new DatabaseHelper(this);
             public void onSuccess(LocationSettingsResponse locationSettingsResponse) {
                 // All location settings are satisfied. The client can initialize
                 // location requests here.
-                mRequestingLocationUpdates=true;
+                mRequestingLocationUpdates = true;
                 createLocationRequest();
             }
         });
@@ -155,7 +192,7 @@ DatabaseHelper db=new DatabaseHelper(this);
                             }
                         }
                     });
-        }catch (SecurityException sException){
+        } catch (SecurityException sException) {
 
         }
     }
@@ -235,23 +272,23 @@ DatabaseHelper db=new DatabaseHelper(this);
 
     protected void createLocationRequest() {
         LocationRequest mLocationRequest = new LocationRequest();
-        mLocationRequest.setInterval(10000);
-        mLocationRequest.setFastestInterval(5000);
+        mLocationRequest.setInterval(10000 * 3);
+        mLocationRequest.setFastestInterval(5000 * 6);
         mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
 
         // new Google API SDK v11 uses getFusedLocationProviderClient(this)
-      try{
-          mFusedLocationClient.requestLocationUpdates(mLocationRequest, new LocationCallback() {
-                      @Override
-                      public void onLocationResult(LocationResult locationResult) {
-                          // do work here
-                          onLocationChanged(locationResult.getLastLocation());
-                      }
-                  },
-                  Looper.myLooper());
-      }catch (SecurityException exception){
+        try {
+            mFusedLocationClient.requestLocationUpdates(mLocationRequest, new LocationCallback() {
+                        @Override
+                        public void onLocationResult(LocationResult locationResult) {
+                            // do work here
+                            onLocationChanged(locationResult.getLastLocation());
+                        }
+                    },
+                    Looper.myLooper());
+        } catch (SecurityException exception) {
 
-      }
+        }
     }
 
     public void onLocationChanged(Location location) {
@@ -259,19 +296,21 @@ DatabaseHelper db=new DatabaseHelper(this);
 
         String lat = String.valueOf(location.getLatitude());
         String lng = String.valueOf(location.getLongitude());
-
+        com.example.mtap.locationapp.model.Location location1 = new com.example.mtap.locationapp.model.Location();
         String msg = "Updated Location: " +
                 lat + "," +
                 lng;
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        // Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
         // You can now create a LatLng Object for use with maps
-      //  LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+        //  LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
-
+        location1.setLat(lat);
+        location1.setLng(lng);
         DatabaseHelper db = new DatabaseHelper(LocationActivity.this);
-        long check = db.insertLocation(lat, lng);
-        if(check>=1.0){
-            Toast.makeText(this, "Location inserted successfully ", Toast.LENGTH_LONG).show();
+        long check = db.insertLocation(location1);
+        if (check >= 1.0) {
+           // getSupportLoaderManager().restartLoader(LOADER_ID, null, this);
+             Toast.makeText(this, "Location inserted successfully ", Toast.LENGTH_LONG).show();
         }
 
     }
@@ -286,12 +325,12 @@ DatabaseHelper db=new DatabaseHelper(this);
 
     private void startLocationUpdates() {
         try {
-        if(mFusedLocationClient!=null){
-            mFusedLocationClient.requestLocationUpdates(mLocationRequest,
-                    mLocationCallback,
-                    null /* Looper */);
-        }
-        }catch (SecurityException excption){
+            if (mFusedLocationClient != null) {
+                mFusedLocationClient.requestLocationUpdates(mLocationRequest,
+                        mLocationCallback,
+                        null /* Looper */);
+            }
+        } catch (SecurityException excption) {
 
         }
     }
@@ -303,8 +342,38 @@ DatabaseHelper db=new DatabaseHelper(this);
     }
 
     private void stopLocationUpdates() {
-       if(mFusedLocationClient!=null){
-           mFusedLocationClient.removeLocationUpdates(mLocationCallback);
-       }
+        if (mFusedLocationClient != null) {
+            mFusedLocationClient.removeLocationUpdates(mLocationCallback);
+        }
+    }
+
+    @Override
+    public void onInsertionSuccess(com.example.mtap.locationapp.model.Location location) {
+        locationList.add(0, location);
+
+       /* mAdapter.notifyItemInserted(0);
+        mAdapter.notifyItemRangeChanged(0, locationList.size());*/
+        //mAdapter.notifyItemChanged(0);
+
+      //  mAdapter.notifyDataSetChanged(); actual code
+       // Toast.makeText(LocationActivity.this, "refreshed", Toast.LENGTH_SHORT).show();
+    }
+
+
+    @NonNull
+    @Override
+    public Loader<Cursor> onCreateLoader(int i, @Nullable Bundle bundle) {
+        return new CursorLoader(LocationActivity.this, LocationsProvider.urlForItems(0), null, null, null, null);
+    }
+
+    @Override
+    public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor cursor) {
+
+        mAdapter.swapCursor(cursor);
+    }
+
+    @Override
+    public void onLoaderReset(@NonNull Loader<Cursor> loader) {
+
     }
 }

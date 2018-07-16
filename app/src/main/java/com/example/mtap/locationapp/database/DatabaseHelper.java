@@ -5,7 +5,9 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.widget.Toast;
 
+import com.example.mtap.locationapp.interfaces.IRefreshLocationListListener;
 import com.example.mtap.locationapp.model.Location;
 
 import java.util.ArrayList;
@@ -17,10 +19,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     // Database Name
     private static final String DATABASE_NAME = "location_db";
-
+private Context mContext;
 
     public DatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        mContext=context;
     }
 
     // Creating Tables
@@ -41,18 +44,31 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         onCreate(db);
     }
 
-    public long insertLocation(String lat,String lng) {
+    public long insertLocation(Location location) {
         // get writable database as we want to write data
         SQLiteDatabase db = this.getWritableDatabase();
 
         ContentValues values = new ContentValues();
         // `id` and `timestamp` will be inserted automatically.
         // no need to add them
-        values.put(Location.COLUMN_LAT, lat);
-        values.put(Location.COLUMN_LNG, lng);
+        values.put(Location.COLUMN_LAT, location.getLat());
+        values.put(Location.COLUMN_LNG, location.getLng());
         // insert row
         long id = db.insert(Location.TABLE_NAME, null, values);
+if(id>=1.0){
 
+    try {
+        IRefreshLocationListListener locationListListener=
+                (IRefreshLocationListListener)mContext;
+        if(locationListListener!=null){
+            locationListListener.onInsertionSuccess(location);
+
+        }
+    } catch (ClassCastException e) {
+        Toast.makeText(mContext, "Exception occured", Toast.LENGTH_SHORT).show();
+    }
+
+}
         // close db connection
         if(db!=null){
             db.close();

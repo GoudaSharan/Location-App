@@ -8,6 +8,7 @@ android {
         targetSdkVersion 28
         versionCode 1
         versionName "1.0"
+        multiDexEnabled true
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -40,4 +41,8 @@ dependencies {
         exclude module: 'appcompat-v7'
         exclude module: 'support-v4'
     }
+
+    // RecyclerView
+    implementation 'com.android.support:recyclerview-v7:27.0.0'
+    implementation 'com.android.support:multidex:1.0.3'
 }

@@ -4,12 +4,18 @@ public class Location {
     String lat;
     String lng;
 
+   /* public Location(String lat, String lng) {
+        this.lat = lat;
+        this.lng = lng;
+    }*/
 
     public static final String TABLE_NAME = "location";
     public static final String COLUMN_ID = "id";
     public static final String COLUMN_LAT = "lat";
     public static final String COLUMN_LNG = "lng";
 
+    public static final String[] ALL_COLUMNS =
+            {COLUMN_ID,COLUMN_LAT,COLUMN_LNG};
 
     // Create table SQL query
     public static final String CREATE_TABLE =
