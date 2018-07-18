@@ -19,7 +19,6 @@ public class LocationsProvider extends ContentProvider {
    // private static final String AUTHORITY = "com.locationapp.mylocations";
     private static final String BASE_PATH = "locations";
 
-
     private static final int CONTACTS = 1;
     private static final int CONTACT_ID = 2;
 
