@@ -1,5 +1,7 @@
 package com.example.mtap.locationapp.model;
 
+import android.database.Cursor;
+
 public class Location {
     String lat;
     String lng;
@@ -24,6 +26,18 @@ public class Location {
                     + COLUMN_LAT + " TEXT,"
                     + COLUMN_LNG + " TEXT"
                     + ")";
+
+
+    public static final String[] PROJECTION = new String[]{
+            COLUMN_LAT, COLUMN_LNG
+    };
+
+    public static Location fromCursor(Cursor cursor) {
+        Location location = new Location();
+        location.lat = cursor.getString(cursor.getColumnIndex(COLUMN_LAT));
+        location.lng = cursor.getString(cursor.getColumnIndex(COLUMN_LNG));
+        return location;
+    }
 
     public String getLat() {
         return lat;

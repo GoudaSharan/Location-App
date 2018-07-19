@@ -1,10 +1,18 @@
 package com.example.mtap.locationapp.views.activities;
 
+import android.Manifest;
+import android.accounts.Account;
+import android.accounts.AccountManager;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
+import android.database.ContentObserver;
 import android.database.Cursor;
 import android.location.Location;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
@@ -26,12 +34,18 @@ import android.support.v7.widget.Toolbar;
 import android.view.View;
 import android.widget.Toast;
 
+import com.example.mtap.locationapp.Locations.ILocationsListener;
+import com.example.mtap.locationapp.Locations.LocationsPresenter;
+import com.example.mtap.locationapp.Locations.SafetraxLocations;
 import com.example.mtap.locationapp.MainActivity;
 import com.example.mtap.locationapp.R;
 import com.example.mtap.locationapp.adapter.LocationAdapter;
 import com.example.mtap.locationapp.database.DatabaseHelper;
 import com.example.mtap.locationapp.interfaces.IRefreshLocationListListener;
+import com.example.mtap.locationapp.provider.LocalStoreContract;
 import com.example.mtap.locationapp.provider.LocationsProvider;
+import com.example.mtap.locationapp.provider.StoreProvider;
+import com.example.mtap.locationapp.sync.StoreSyncAdapter;
 import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
@@ -49,8 +63,7 @@ import com.google.android.gms.tasks.Task;
 import java.util.ArrayList;
 import java.util.List;
 
-public class LocationActivity extends AppCompatActivity implements
-        IRefreshLocationListListener,android.support.v4.app.LoaderManager.LoaderCallbacks<Cursor> {
+public class LocationActivity extends AppCompatActivity implements ILocationsListener{
     private FusedLocationProviderClient mFusedLocationClient;
     private LocationRequest mLocationRequest;
     private long UPDATE_INTERVAL = 10 * 1000;  /* 10 secs */
@@ -63,42 +76,176 @@ public class LocationActivity extends AppCompatActivity implements
     private List<com.example.mtap.locationapp.model.Location> locationList = new ArrayList<>();
     private RecyclerView recyclerView;
     private LocationAdapter mAdapter;
-
     private int LOADER_ID = 1;
+    private SafetraxLocations mSafetraxLocations;
+    // Constants
+    // The authority for the sync adapter's content provider
+    public static final String AUTHORITY = "com.example.mtap.locationapp.localstore";
+    // An account type, in the form of a domain name
+    public static final String ACCOUNT_TYPE = "com.example.mtap.locationapp.localstore.account";
+    // The account name
+    public static final String ACCOUNT = "dummyaccount";
+    // Instance fields
+    Account mAccount;
+    // A content resolver for accessing the provider
+    ContentResolver mResolver;
+
+    public static final int PERMISSION_ALL = 1;
+    String[] PERMISSIONS = {Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.GET_ACCOUNTS,Manifest.permission.ACCESS_COARSE_LOCATION};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_location);
+        recyclerView = (RecyclerView) findViewById(R.id.recycler_view);
+
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        // Get the content resolver object for your app
+        mResolver = getContentResolver();
+
+        mSafetraxLocations=new SafetraxLocations(this,this);
+
+        addAccount();
 
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            // Do something for Marshamallow and above versions\
+
+            /*// Do something for Marshamallow and above versions\
             if (ContextCompat.checkSelfPermission(LocationActivity.this,
                     android.Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED) {
                 checkLocationPermission();
             } else {
                 initializeLocation();
+              //  addAccount();
+            }*/
+
+            if(!hasPermissions(this, PERMISSIONS)){
+                ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_ALL);
+            }else {
+                initializeLocation();
+                 addAccount();
             }
+
         } else {
             initializeLocation();
+            addAccount();
         }
 
-
-        DatabaseHelper db = new DatabaseHelper(this);
+        /*DatabaseHelper db = new DatabaseHelper(this);
         locationList = db.getAllLocations();
+        */
+        mSafetraxLocations.loadLocations();
+        // setAdapter();
 
-
-       setAdapter();
     //    getSupportLoaderManager().initLoader(LOADER_ID, null, this);
 
     }
 
+    private void addAccount() {
+
+        // Create the dummy account
+        mAccount = CreateSyncAccount(this);
+
+        /*
+         * Create a content observer object.
+         * Its code does not mutate the provider, so set
+         * selfChange to "false"
+         */
+        LocationObserver observer = new LocationObserver(null);
+        /*
+         * Register the observer for the data table. The table's path
+         * and any of its subpaths trigger the observer.
+         */
+        mResolver.registerContentObserver(LocalStoreContract.BASE_CONTENT_URI,
+                true, observer);
+
+    }
+
+    /**
+     * Create a new dummy account for the sync adapter
+     *
+     * @param context The application context
+     */
+    public static Account CreateSyncAccount(Context context) {
+        // Create the account type and default account
+        Account newAccount = new Account(
+                ACCOUNT, ACCOUNT_TYPE);
+        // Get an instance of the Android account manager
+        AccountManager accountManager =
+                (AccountManager) context.getSystemService(
+                        ACCOUNT_SERVICE);
+        /*
+         * Add the account and account type, no password or user data
+         * If successful, return the Account object, otherwise report an error.
+         */
+        if (accountManager.addAccountExplicitly(newAccount, null, null)) {
+            /*
+             * If you don't set android:syncable="true" in
+             * in your <provider> element in the manifest,
+             * then call context.setIsSyncable(account, AUTHORITY, 1)
+             * here.
+             */
+            return newAccount;
+        } else {
+            /*
+             * The account exists or some other error occurred. Log this, report it,
+             * or handle it internally.
+             */
+            return null;
+        }
+    }
+
+
+    public class LocationObserver extends ContentObserver {
+        // The account name
+        public static final String ACCOUNT = "dummyaccount";
+        // The authority for the sync adapter's content provider
+        public static final String AUTHORITY = "com.example.mtap.locationapp.localstore";
+        public LocationObserver(android.os.Handler handler){
+            super(handler);
+        }
+
+        /*
+         * Define a method that's called when data in the
+         * observed content provider changes.
+         * This method signature is provided for compatibility with
+         * older platforms.
+         */
+        @Override
+        public void onChange(boolean selfChange) {
+            /*
+             * Invoke the method signature available as of
+             * Android platform version 4.1, with a null URI.
+             */
+            onChange(selfChange, null);
+        }
+        /*
+         * Define a method that's called when data in the
+         * observed content provider changes.
+         */
+        @Override
+        public void onChange(boolean selfChange, Uri changeUri) {
+            /*
+             * Ask the framework to run your sync adapter.
+             * To maintain backward compatibility, assume that
+             * changeUri is null.
+             */
+
+            StoreSyncAdapter storeSyncAdapter=new StoreSyncAdapter(LocationActivity.this,
+                    true);
+            storeSyncAdapter.onPerformSync(mAccount,null,AUTHORITY,
+                    null,null);
+
+            ContentResolver.requestSync(mAccount, AUTHORITY, null);
+
+        }
+
+    }
+
     private void setAdapter() {
-        recyclerView = (RecyclerView) findViewById(R.id.recycler_view);
 
         if (locationList != null ) {
             mAdapter = new LocationAdapter(locationList,null);
@@ -229,7 +376,9 @@ public class LocationActivity extends AppCompatActivity implements
             } else {
                 // No explanation needed, we can request the permission.
                 ActivityCompat.requestPermissions(this,
-                        new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
+                        new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.GET_ACCOUNTS, Manifest.permission.ACCOUNT_MANAGER
+                        },
                         MY_PERMISSIONS_REQUEST_LOCATION);
             }
             return false;
@@ -238,11 +387,22 @@ public class LocationActivity extends AppCompatActivity implements
         }
     }
 
+    public static boolean hasPermissions(Context context, String... permissions) {
+        if (context != null && permissions != null) {
+            for (String permission : permissions) {
+                if (ActivityCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode,
                                            String permissions[], int[] grantResults) {
         switch (requestCode) {
-            case MY_PERMISSIONS_REQUEST_LOCATION: {
+            case PERMISSION_ALL: {
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -256,6 +416,15 @@ public class LocationActivity extends AppCompatActivity implements
                         //Request location updates:
                         // locationManager.requestLocationUpdates(provider, 400, 1, this);
                     }
+
+                    if (ContextCompat.checkSelfPermission(this,
+                            Manifest.permission.GET_ACCOUNTS )
+                            == PackageManager.PERMISSION_GRANTED) {
+                        addAccount();
+                        //Request location updates:
+                        // locationManager.requestLocationUpdates(provider, 400, 1, this);
+                    }
+
 
                 } else {
 
@@ -306,12 +475,18 @@ public class LocationActivity extends AppCompatActivity implements
 
         location1.setLat(lat);
         location1.setLng(lng);
-        DatabaseHelper db = new DatabaseHelper(LocationActivity.this);
+        ContentValues contentValues=new ContentValues();
+        contentValues.put(com.example.mtap.locationapp.model.Location.COLUMN_LAT,lat);
+        contentValues.put(com.example.mtap.locationapp.model.Location.COLUMN_LNG,lng);
+
+      Uri uri = getContentResolver().insert(LocalStoreContract.LocationStore.CONTENT_URI,contentValues);
+
+        /*DatabaseHelper db = new DatabaseHelper(LocationActivity.this);
         long check = db.insertLocation(location1);
         if (check >= 1.0) {
            // getSupportLoaderManager().restartLoader(LOADER_ID, null, this);
              Toast.makeText(this, "Location inserted successfully ", Toast.LENGTH_LONG).show();
-        }
+        }*/
 
     }
 
@@ -348,32 +523,18 @@ public class LocationActivity extends AppCompatActivity implements
     }
 
     @Override
-    public void onInsertionSuccess(com.example.mtap.locationapp.model.Location location) {
-        locationList.add(0, location);
-
-       /* mAdapter.notifyItemInserted(0);
-        mAdapter.notifyItemRangeChanged(0, locationList.size());*/
-        //mAdapter.notifyItemChanged(0);
-
-      //  mAdapter.notifyDataSetChanged(); actual code
-       // Toast.makeText(LocationActivity.this, "refreshed", Toast.LENGTH_SHORT).show();
-    }
-
-
-    @NonNull
-    @Override
-    public Loader<Cursor> onCreateLoader(int i, @Nullable Bundle bundle) {
-        return new CursorLoader(LocationActivity.this, LocationsProvider.urlForItems(0), null, null, null, null);
-    }
-
-    @Override
-    public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor cursor) {
-
-        mAdapter.swapCursor(cursor);
-    }
-
-    @Override
-    public void onLoaderReset(@NonNull Loader<Cursor> loader) {
+    public void onLocationsLoaded(List<com.example.mtap.locationapp.model.Location> locationlist) {
+       // setAdapter();
+        if (locationlist == null || locationlist.isEmpty()) return;
+        mAdapter = new LocationAdapter(locationlist,null);
+        RecyclerView.LayoutManager mLayoutManager = new LinearLayoutManager
+                (getApplicationContext());
+        recyclerView.setLayoutManager(mLayoutManager);
+        recyclerView.setItemAnimator(new DefaultItemAnimator());
+        recyclerView.setAdapter(mAdapter);
+        synchronized (recyclerView) {
+            recyclerView.notifyAll();
+        }
 
     }
 }
